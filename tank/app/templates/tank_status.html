@@ -1,0 +1,208 @@
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Water Tank Status</title>
+    <style>
+   
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f0f8ff;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+        h1 {
+            color: #004080;
+        }
+        .tank-container {
+            position: relative;
+            width: 200px;
+            height: 400px;
+            background-color: #e0e0e0;
+            border-radius: 10px;
+            border: 2px solid #004080;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        .water-level {
+            position: absolute;
+            bottom: 0;
+            width: 100%;
+            background-color: #87CEEB;
+            transition: height 0.5s ease-in-out;
+        }
+        .tank-level {
+            font-size: 18px;
+            margin-bottom: 20px;
+            color: #004080;
+        }
+        .threshold, .pump-status {
+            margin-bottom: 15px;
+            font-size: 16px;
+        }
+        .threshold input, .pump-status input {
+            margin-left: 10px;
+            padding: 5px;
+            border: 1px solid #004080;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        .pump-status input[type="checkbox"] {
+            transform: scale(1.2);
+        }
+        .submit-btn {
+            background-color: #004080;
+            color: #fff;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        .submit-btn:hover {
+            background-color: #002040;
+        }
+        .prediction-form {
+            margin-top: 30px;
+            width: 100%;
+            max-width: 500px;
+            background-color: #f8f8f8;
+            padding: 20px;
+            border-radius: 10px;
+            border: 2px solid #004080;
+        }
+        .prediction-result {
+            margin-top: 20px;
+            font-size: 18px;
+            color: #004080;
+        }
+    
+    </style>
+    <script>
+        // Function to fetch water level data from the server
+        function fetchWaterLevel() {
+            fetch('', {
+                method: 'GET',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'  // Identify the request as AJAX
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                document.querySelector('.water-level').style.height = data.current_level + '%';
+                document.querySelector('.tank-level').innerText = 'Current Water Level: ' + data.current_level + '%';
+
+                const pumpStatusCheckbox = document.getElementById('pump-status');
+                pumpStatusCheckbox.checked = data.pump_status;
+                pumpStatusCheckbox.nextElementSibling.innerText = data.pump_status ? 'On' : 'Off';
+            })
+            .catch(error => console.error('Error fetching water level:', error));
+        }
+
+        setInterval(fetchWaterLevel, 5000);
+
+        document.querySelector('form').addEventListener('submit', function(event) {
+            event.preventDefault();
+
+            const thresholdValue = document.getElementById('threshold').value;
+            
+            fetch('', {
+                method: 'POST',
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-CSRFToken': '{{ csrf_token }}'  // CSRF token for Django
+                },
+                body: `threshold=${thresholdValue}`
+            })
+            .then(response => response.text())
+            .then(() => fetchWaterLevel())
+            .catch(error => console.error('Error updating threshold:', error));
+        });
+
+        // Display the prediction form
+        function showPredictionForm() {
+            document.getElementById('prediction-form-container').style.display = 'block';
+        }
+
+        function handlePredictionSubmit(event) {
+    event.preventDefault();
+
+    const formData = new FormData(document.getElementById('prediction-form'));
+
+    fetch("{% url 'predict_water_usage' %}", {
+        method: 'POST',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': '{{ csrf_token }}'
+        },
+        body: new URLSearchParams(formData)
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            console.error("Prediction error:", data.error);
+        } else {
+            document.getElementById("prediction-result").innerText = "Required Water percentage in next hour: " + data.predicted_water_usage;
+        }
+    })
+    .catch(error => console.error('Error predicting water usage:', error));
+}
+
+    </script>
+</head>
+<body>
+    <h1>Water Tank Status</h1>
+    <div class="tank-container">
+        <div class="water-level" style="height: {{ tank.current_level }}%;"></div>
+    </div>
+    <div class="tank-level">Current Water Level: {{ tank.current_level }}%</div>
+    <form method="post">
+        {% csrf_token %}
+        <div class="threshold">
+            <label for="threshold">Set Pump Threshold:</label>
+            <input type="number" name="threshold" id="threshold" value="{{ tank.threshold }}">
+        </div>
+        <div class="pump-status">
+            <label for="pump-status">Pump Status:</label>
+            <input type="checkbox" id="pump-status" {% if tank.pump_status %}checked{% endif %} disabled>
+            <span>{% if tank.pump_status %} On {% else %} Off {% endif %}</span>
+        </div>
+        <button type="submit" class="submit-btn">Update Threshold</button>
+    </form>
+
+    <button type="button" class="submit-btn" onclick="showPredictionForm()">Predict</button>
+
+    <!-- Prediction Form -->
+    <div id="prediction-form-container" style="display:none;">
+        <h3>Predict Water Usage</h3>
+        <form id="prediction-form" onsubmit="handlePredictionSubmit(event)">
+            {% csrf_token %}
+            <label for="people_using_water">People Using Water:</label>
+            <input type="number" id="people_using_water" name="people_using_water"><br>
+        
+            <label for="current_water_level">Current Water Level:</label>
+            <input type="number" id="current_water_level" name="current_water_level"><br>
+        
+            <label for="temperature">Temperature:</label>
+            <input type="number" id="temperature" name="temperature"><br>
+        
+            <button type="submit" class="submit-btn">Submit</button>
+        </form>
+    </div>
+
+    <!-- Prediction Result -->
+    <div id="prediction-result" class="prediction-result"></div>
+</body>
+</html>
